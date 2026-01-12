@@ -11,13 +11,24 @@ from typing import List, Dict, Optional
 # Streamlit secretsまたは環境変数からTurso接続情報を取得
 def get_turso_config():
     """Turso接続情報を取得（Streamlit secrets優先）"""
+    url = ""
+    token = ""
+    
+    # 1. Streamlit secretsを試す
     try:
         import streamlit as st
-        url = st.secrets.get("TURSO_DATABASE_URL", os.getenv("TURSO_DATABASE_URL", ""))
-        token = st.secrets.get("TURSO_AUTH_TOKEN", os.getenv("TURSO_AUTH_TOKEN", ""))
-    except:
+        if hasattr(st, 'secrets'):
+            url = st.secrets.get("TURSO_DATABASE_URL", "")
+            token = st.secrets.get("TURSO_AUTH_TOKEN", "")
+    except Exception:
+        pass
+    
+    # 2. 環境変数にフォールバック
+    if not url:
         url = os.getenv("TURSO_DATABASE_URL", "")
+    if not token:
         token = os.getenv("TURSO_AUTH_TOKEN", "")
+    
     return url, token
 
 TURSO_DATABASE_URL, TURSO_AUTH_TOKEN = get_turso_config()
