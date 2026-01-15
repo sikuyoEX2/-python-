@@ -161,18 +161,14 @@ def render_analysis_result(ticker: str, result: dict):
         for detail in signal_result['details']:
             st.write(detail)
     
-    # リスクリワード & 購入シミュレーター
-    if signal_result['risk_reward'] or signal_result['signal'] != SignalType.NONE:
-        rr = signal_result.get('risk_reward', {})
-        
-        st.divider()
-        
-        # 購入シミュレーター
-        stop_loss_suggestion = rr.get('stop_loss') if rr else current_price * 0.95
-        render_position_calculator(ticker, current_price, stop_loss_suggestion)
-        
-        # リスクリワード表示
-        if rr:
+    # 購入シミュレーター（常に表示）
+    st.divider()
+    rr = signal_result.get('risk_reward', {})
+    stop_loss_suggestion = rr.get('stop_loss') if rr else current_price * 0.95
+    render_position_calculator(ticker, current_price, stop_loss_suggestion)
+    
+    # リスクリワード表示（シグナル時のみ）
+    if rr:
             st.subheader("💰 リスクリワード")
             col1, col2, col3 = st.columns(3)
             with col1:
