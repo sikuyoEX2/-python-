@@ -598,6 +598,19 @@ def render_screener_page():
         
         st.caption(f"最終スキャン: {scan_time}")
         
+        # 株価×RSIスコアでソート（低いほど上位）
+        # スコア = (株価/最大株価) + (RSI/100) → 0に近いほど「安くて売られすぎ」
+        if results:
+            max_price_in_results = max(r['price'] for r in results) or 1
+            for r in results:
+                price_score = r['price'] / max_price_in_results  # 0〜1
+                rsi_score = (r.get('rsi') or 50) / 100  # 0〜1
+                r['value_score'] = price_score + rsi_score  # 0〜2（低いほど良い）
+            
+            # スコア順にソート
+            results = sorted(results, key=lambda x: x.get('value_score', 999))
+            st.session_state.screening_results = results
+        
         # シグナル発生銘柄
         signal_stocks = [r for r in results if r.get('signal')]
         setup_stocks = [r for r in results if r.get('setup') and not r.get('signal')]
@@ -611,6 +624,7 @@ def render_screener_page():
         
         with tab1:
             if signal_stocks:
+                st.caption("※ 低価格×低RSI順（お買い得順）")
                 for stock in signal_stocks:
                     render_stock_card(stock, show_signal=True)
             else:
@@ -618,6 +632,7 @@ def render_screener_page():
         
         with tab2:
             if show_setup and setup_stocks:
+                st.caption("※ 低価格×低RSI順（お買い得順）")
                 for stock in setup_stocks:
                     render_stock_card(stock, show_signal=False)
             elif not show_setup:
@@ -627,11 +642,13 @@ def render_screener_page():
         
         with tab3:
             if results:
+                st.caption("※ 低価格×低RSI順（お買い得順）")
                 df = pd.DataFrame(results)
-                df = df[['ticker', 'name', 'price', 'trend', 'rsi', 'signal', 'setup']]
-                df.columns = ['コード', '銘柄名', '株価', 'トレンド', 'RSI', 'シグナル', 'セットアップ']
+                df = df[['ticker', 'name', 'price', 'rsi', 'value_score', 'trend', 'signal', 'setup']]
+                df.columns = ['コード', '銘柄名', '株価', 'RSI', 'スコア', 'トレンド', 'シグナル', 'セットアップ']
                 df['株価'] = df['株価'].apply(lambda x: f"¥{x:,.0f}")
                 df['RSI'] = df['RSI'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
+                df['スコア'] = df['スコア'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
                 df['シグナル'] = df['シグナル'].fillna('-')
                 df['セットアップ'] = df['セットアップ'].fillna('-')
                 st.dataframe(df, use_container_width=True, hide_index=True)
