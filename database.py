@@ -267,8 +267,4 @@ def get_transactions(limit: int = 20) -> List[Dict]:
     return [dict(zip(columns, row)) for row in rows]
 
 
-# 初期化
-try:
-    init_database()
-except Exception as e:
-    print(f"Database init error: {e}")
+# 注意: init_database()はapp.py側で呼び出すこと

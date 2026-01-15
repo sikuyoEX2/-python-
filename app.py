@@ -32,8 +32,11 @@ from portfolio_manager import (
 )
 from database import get_funds, init_database
 
-# データベース初期化
-init_database()
+# データベース初期化（エラー時は続行）
+try:
+    init_database()
+except Exception as e:
+    print(f"Database init skipped: {e}")
 
 # ページ設定
 st.set_page_config(
