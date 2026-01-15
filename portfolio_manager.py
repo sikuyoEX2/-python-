@@ -108,7 +108,15 @@ def get_portfolio_with_prices() -> List[Dict]:
     
     for holding in portfolio:
         ticker = holding['ticker']
-        current_price = get_current_price(ticker)
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            current_price = info.get('regularMarketPrice') or info.get('currentPrice')
+            stock_name = info.get('shortName') or info.get('longName') or ticker
+            holding['name'] = stock_name
+        except:
+            current_price = None
+            holding['name'] = ticker
         
         if current_price:
             holding['current_price'] = current_price
@@ -301,7 +309,8 @@ def render_portfolio_table(portfolio: List[Dict]):
         return
     
     for h in portfolio:
-        with st.expander(f"**{h['ticker']}** - {h['quantity']}株", expanded=False):
+        stock_name = h.get('name', h['ticker'])
+        with st.expander(f"**{h['ticker']}** - {stock_name} ({h['quantity']}株)", expanded=False):
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -360,11 +369,11 @@ def render_position_calculator(ticker: str, current_price: float, stop_loss_sugg
     portfolio = get_portfolio_with_prices()
     assets = calculate_total_assets(funds.get('JPY', 0), funds.get('USD', 0), portfolio)
     
-    # 通貨判定
+    # 通貨判定（かぶミニ対応: 日本株も1株単位）
     is_jpy = ticker.endswith('.T')
     cash = assets['cash_jpy'] if is_jpy else assets['cash_usd']
     total_assets = assets['total_jpy'] if is_jpy else assets['total_usd']
-    unit = 100 if is_jpy else 1
+    unit = 1  # かぶミニ対応: 1株単位
     currency_symbol = "¥" if is_jpy else "$"
     
     col1, col2 = st.columns(2)
@@ -385,13 +394,11 @@ def render_position_calculator(ticker: str, current_price: float, stop_loss_sugg
     
     st.divider()
     
-    # 計算結果
+    # 計算結果（1株単位）
     max_shares = calculate_max_shares(cash, current_price, unit)
     recommended_shares = calculate_position_size(total_assets, risk_pct, current_price, sl_price)
     
-    # 単元株調整
-    if is_jpy:
-        recommended_shares = (recommended_shares // 100) * 100
+    # かぶミニなので単元株調整は不要
     
     col1, col2 = st.columns(2)
     
