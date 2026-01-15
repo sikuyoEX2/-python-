@@ -240,9 +240,9 @@ def main():
         )
         st.divider()
     
-    # スクリーナーから詳細分析への遷移
-    if st.session_state.get('go_to_signal'):
-        st.session_state.go_to_signal = False
+    # スクリーナーから詳細分析への遷移（フラグは即座にクリア）
+    from_screener = st.session_state.pop('go_to_signal', False)
+    if from_screener:
         page = "📈 シグナル監視"
     
     # ページ分岐
@@ -273,7 +273,8 @@ def main():
         
         ticker_input = st.text_input(
             "銘柄コード",
-            value="AAPL",
+            value="",
+            placeholder="AAPL, 7203.T など",
             help="例: AAPL（米国株）, 7203.T（日本株）"
         )
         
