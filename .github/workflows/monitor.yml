@@ -1,0 +1,42 @@
+name: Stock Signal Monitor
+
+on:
+  schedule:
+    # 平日の9:00-15:30（日本市場）と22:30-5:00（米国市場）に15分ごとに実行
+    # cron形式: 分 時 日 月 曜日（UTC）
+    - cron: '*/15 0-6,23 * * 1-5'   # 米国市場時間（UTC: 23:00-6:00 = JST 8:00-15:00）
+    - cron: '*/15 13-21 * * 1-5'   # 米国市場時間（UTC: 13:00-21:00 = JST 22:00-6:00）
+  
+  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      watchlist:
+        description: '監視銘柄（カンマ区切り）'
+        required: false
+        default: 'AAPL,NVDA,GOOGL'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas requests
+      
+      - name: Run signal monitor
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'AAPL,NVDA,GOOGL,7203.T' }}
+        run: python monitor.py
