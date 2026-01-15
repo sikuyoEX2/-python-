@@ -227,9 +227,10 @@ RAKUTEN_MINI_STOCKS = [
 ]
 
 
+@st.cache_data(ttl=300)  # 5分キャッシュ
 def get_stock_data_for_screening(ticker: str) -> Optional[Dict]:
     """
-    スクリーニング用の株価データを取得
+    スクリーニング用の株価データを取得（キャッシュ付き）
     """
     try:
         stock = yf.Ticker(ticker)

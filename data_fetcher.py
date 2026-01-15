@@ -1,20 +1,26 @@
 """
-データ取得モジュール
-yfinanceを使用してマルチタイムフレームの株価データを取得
+データ取得モジュール（最適化版）
+yfinanceをキャッシュ付きで使用してAPIコール削減
 """
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 
 
+# キャッシュのTTL（秒）
+CACHE_TTL_SECONDS = 300  # 5分
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS)
 def fetch_stock_data(
     ticker: str,
     interval: str = "15m",
     period: str = "5d"
 ) -> pd.DataFrame:
     """
-    指定した銘柄のOHLCデータを取得
+    指定した銘柄のOHLCデータを取得（キャッシュ付き）
     
     Args:
         ticker: 銘柄コード（例: "AAPL", "7203.T"）
@@ -39,6 +45,7 @@ def fetch_stock_data(
         raise Exception(f"データ取得エラー ({ticker}): {str(e)}")
 
 
+@st.cache_data(ttl=CACHE_TTL_SECONDS)
 def fetch_multi_timeframe_data(
     ticker: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -87,9 +94,10 @@ def resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
     return df_4h
 
 
+@st.cache_data(ttl=CACHE_TTL_SECONDS)
 def get_ticker_info(ticker: str) -> dict:
     """
-    銘柄の基本情報を取得
+    銘柄の基本情報を取得（キャッシュ付き）
     
     Args:
         ticker: 銘柄コード
@@ -108,3 +116,51 @@ def get_ticker_info(ticker: str) -> dict:
         }
     except:
         return {"name": ticker, "currency": "Unknown", "exchange": "Unknown", "current_price": None}
+
+
+@st.cache_data(ttl=60)  # 1分キャッシュ
+def get_current_price(ticker: str) -> Optional[float]:
+    """現在価格を取得（キャッシュ付き）"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return info.get('regularMarketPrice') or info.get('currentPrice')
+    except:
+        return None
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS)
+def get_stock_data_batch(tickers: tuple, max_price: float = 10000) -> Dict:
+    """
+    複数銘柄のデータを一括取得（スクリーナー用）
+    
+    Args:
+        tickers: 銘柄コードのタプル（キャッシュのためタプルを使用）
+        max_price: 最大株価フィルター
+    
+    Returns:
+        銘柄データの辞書
+    """
+    results = {}
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            price = info.get('regularMarketPrice') or info.get('currentPrice')
+            
+            if price and price <= max_price:
+                results[ticker] = {
+                    'ticker': ticker,
+                    'name': info.get('shortName', ticker),
+                    'price': price,
+                    'info': info
+                }
+        except:
+            continue
+    
+    return results
+
+
+def clear_cache():
+    """全てのキャッシュをクリア"""
+    st.cache_data.clear()

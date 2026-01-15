@@ -10,18 +10,8 @@ from database import (
     add_or_update_holding, update_stop_loss, sell_holding, delete_holding,
     add_transaction
 )
-from data_fetcher import get_ticker_info
+from data_fetcher import get_ticker_info, get_current_price
 import yfinance as yf
-
-
-def get_current_price(ticker: str) -> Optional[float]:
-    """現在価格を取得"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return info.get('regularMarketPrice') or info.get('currentPrice')
-    except:
-        return None
 
 
 def calculate_position_size(
