@@ -30,7 +30,7 @@ from portfolio_manager import (
     get_portfolio_with_prices,
     calculate_position_size
 )
-from database import get_funds, init_database
+from database import get_funds, init_database, sync_to_localstorage, render_data_loader
 
 # データベース初期化（エラー時は続行）
 try:
@@ -44,6 +44,9 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+# localStorageからデータを読み込むUI
+render_data_loader()
 
 # セッション状態の初期化
 if 'notification_manager' not in st.session_state:
