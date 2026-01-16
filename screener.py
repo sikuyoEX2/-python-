@@ -773,8 +773,12 @@ def render_screener_page():
                             ai_results = sorted(ai_results, key=lambda x: x.get('total_score', 0), reverse=True)
                             st.session_state.top5_ai_results = ai_results
                             st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
-                    except ImportError:
-                        st.warning("⚠️ AI分析ライブラリがインストールされていません")
+                    except ImportError as ie:
+                        st.warning(f"⚠️ AI分析ライブラリがインストールされていません: {ie}")
+                        st.session_state.top5_ai_results = top5
+                        st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                    except Exception as e:
+                        st.warning(f"⚠️ AI分析中にエラー: {e}")
                         st.session_state.top5_ai_results = top5
                         st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
                 
