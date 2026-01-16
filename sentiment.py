@@ -83,8 +83,10 @@ class SentimentAnalyzer:
 {{"score": 整数, "reason": "理由の文字列"}}
 """
         
-        # リトライ処理（最大3回）
-        max_retries = 3
+        # 指数バックオフによるリトライ（最大5回）
+        max_retries = 5
+        base_delay = 4  # 基本待機時間（秒）
+
         for attempt in range(max_retries):
             try:
                 response = self.model.generate_content(prompt)
@@ -110,7 +112,10 @@ class SentimentAnalyzer:
                 if "429" in error_msg or "quota" in error_msg.lower():
                     if attempt < max_retries - 1:
                         import time
-                        time.sleep(10)  # 10秒待機してリトライ
+                        # 指数バックオフ: 4, 8, 16, 32...
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Rate limit hit. Retrying in {delay}s...")
+                        time.sleep(delay)
                         continue
                 return 50, f"Error: {error_msg}"
         
