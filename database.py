@@ -180,8 +180,12 @@ def init_database():
             conn = TursoConnection()
             conn.execute("CREATE TABLE IF NOT EXISTS funds (id INTEGER PRIMARY KEY, currency TEXT UNIQUE, amount REAL DEFAULT 0)")
             conn.execute("CREATE TABLE IF NOT EXISTS portfolio (id INTEGER PRIMARY KEY, ticker TEXT UNIQUE, quantity INTEGER DEFAULT 0, avg_cost REAL DEFAULT 0, stop_loss REAL, currency TEXT DEFAULT 'JPY', created_at TEXT, updated_at TEXT)")
+            conn.execute("CREATE TABLE IF NOT EXISTS watchlist (id INTEGER PRIMARY KEY, ticker TEXT UNIQUE)")
             conn.execute("INSERT OR IGNORE INTO funds (currency, amount) VALUES ('JPY', 0)")
             conn.execute("INSERT OR IGNORE INTO funds (currency, amount) VALUES ('USD', 0)")
+            # ウォッチリストを読み込み
+            rows = conn.fetchall("SELECT ticker FROM watchlist")
+            st.session_state.watchlist = [row[0] for row in rows]
             st.session_state.use_turso = True
             print("Using Turso database")
         except Exception as e:
@@ -428,7 +432,13 @@ def add_to_watchlist(ticker: str):
         st.session_state.watchlist = []
     if ticker not in st.session_state.watchlist:
         st.session_state.watchlist.append(ticker)
-        if not st.session_state.get('use_turso'):
+        if st.session_state.get('use_turso'):
+            try:
+                conn = TursoConnection()
+                conn.execute("INSERT OR IGNORE INTO watchlist (ticker) VALUES (?)", [ticker])
+            except:
+                pass
+        else:
             save_json_file(WATCHLIST_FILE, st.session_state.watchlist)
 
 
@@ -437,7 +447,13 @@ def remove_from_watchlist(ticker: str):
     init_database()
     if ticker in st.session_state.get('watchlist', []):
         st.session_state.watchlist.remove(ticker)
-        if not st.session_state.get('use_turso'):
+        if st.session_state.get('use_turso'):
+            try:
+                conn = TursoConnection()
+                conn.execute("DELETE FROM watchlist WHERE ticker = ?", [ticker])
+            except:
+                pass
+        else:
             save_json_file(WATCHLIST_FILE, st.session_state.watchlist)
 
 

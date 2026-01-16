@@ -344,8 +344,10 @@ def main():
         
         if st.button("➕ リストに追加", use_container_width=True):
             if ticker_input and ticker_input.upper() not in st.session_state.watchlist:
-                st.session_state.watchlist.append(ticker_input.upper())
+                from database import add_to_watchlist
+                add_to_watchlist(ticker_input.upper())
                 st.success(f"{ticker_input.upper()} を追加")
+                st.rerun()
         
         for i, ticker in enumerate(st.session_state.watchlist):
             col1, col2 = st.columns([3, 1])
@@ -360,7 +362,8 @@ def main():
                     st.session_state.selected_ticker = ticker
             with col2:
                 if st.button("×", key=f"remove_{i}"):
-                    st.session_state.watchlist.remove(ticker)
+                    from database import remove_from_watchlist
+                    remove_from_watchlist(ticker)
                     st.rerun()
         
         if st.session_state.watchlist:
