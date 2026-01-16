@@ -679,8 +679,8 @@ def render_screener_page():
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # 並列処理のWorkers数（スマホ5、PC10）
-        workers = 5 if is_mobile else 10
+        # 並列処理のWorkers数（スマホ5、PC50）
+        workers = 5 if is_mobile else 50
         st.success(f"⚡ 並列処理で実行（Workers: {workers}）")
         
         def update_progress(current, total, ticker):
