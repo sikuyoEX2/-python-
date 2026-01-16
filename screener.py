@@ -538,7 +538,7 @@ def render_screener_page():
         
         scan_mode = st.radio(
             "スキャンモード",
-            ["クイック（100銘柄）", "標準（500銘柄）", "全銘柄（2126銘柄）"],
+            ["クイック（100銘柄）", "標準（500銘柄）", "拡張（1000銘柄）", "全銘柄（2126銘柄）"],
             help="銘柄数が多いほど時間がかかります"
         )
         
@@ -554,6 +554,9 @@ def render_screener_page():
         scan_list = random.sample(RAKUTEN_MINI_STOCKS, min(scan_count, len(RAKUTEN_MINI_STOCKS)))
     elif scan_mode == "標準（500銘柄）":
         scan_count = 500
+        scan_list = random.sample(RAKUTEN_MINI_STOCKS, min(scan_count, len(RAKUTEN_MINI_STOCKS)))
+    elif scan_mode == "拡張（1000銘柄）":
+        scan_count = 1000
         scan_list = random.sample(RAKUTEN_MINI_STOCKS, min(scan_count, len(RAKUTEN_MINI_STOCKS)))
     else:
         scan_list = RAKUTEN_MINI_STOCKS
