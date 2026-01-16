@@ -117,7 +117,11 @@ class SentimentAnalyzer:
                         print(f"Rate limit hit. Retrying in {delay}s...")
                         time.sleep(delay)
                         continue
-                return 50, f"Error: {error_msg}"
+                
+                # エラーメッセージを生成
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    return 50, "⚠️ API制限 (時間をおいて再試行)"
+                return 50, f"Error: {error_msg[:50]}..."
         
         return 50, "リトライ上限到達"
     
