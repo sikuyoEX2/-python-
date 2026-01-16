@@ -737,8 +737,8 @@ def render_screener_page():
                 # AI分析結果がなければ自動実行
                 if 'top5_ai_results' not in st.session_state or st.session_state.get('top5_ai_tickers') != [s['ticker'] for s in top5]:
                     try:
-                        from sentiment import NewsAnalyzer
-                        analyzer = NewsAnalyzer()
+                        from sentiment import SentimentAnalyzer
+                        analyzer = SentimentAnalyzer()
                         
                         with st.spinner("🤖 トップ5銘柄をAI分析中..."):
                             ai_results = []

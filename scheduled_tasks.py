@@ -129,8 +129,8 @@ def run_scheduled_screener_scan(use_ai: bool = False) -> List[Dict]:
     # AI分析（オプション）
     if use_ai and top3:
         try:
-            from sentiment import NewsAnalyzer
-            analyzer = NewsAnalyzer()
+            from sentiment import SentimentAnalyzer
+            analyzer = SentimentAnalyzer()
             
             for stock in top3:
                 ticker = stock['ticker']
