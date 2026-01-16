@@ -892,7 +892,7 @@ def render_screener_page():
 def render_stock_card(stock: Dict, show_signal: bool = True):
     """銘柄カードを表示"""
     with st.container():
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 0.8, 1])
         
         with col1:
             if show_signal and stock.get('signal'):
@@ -909,6 +909,12 @@ def render_stock_card(stock: Dict, show_signal: bool = True):
             st.metric("RSI", f"{stock['rsi']:.1f}" if stock.get('rsi') else "-")
         
         with col4:
+            # ランク表示
+            rank = stock.get('rank', 'C')
+            rank_icons = {"S": "🏆", "A": "🥇", "B": "🥈", "C": "🥉"}
+            st.metric("ランク", f"{rank_icons.get(rank, '')} {rank}")
+        
+        with col5:
             if show_signal and stock.get('signal'):
                 st.success(f"**{stock['signal']}**")
                 st.caption(stock['trigger'])
