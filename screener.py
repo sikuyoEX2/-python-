@@ -578,7 +578,15 @@ def screen_stocks(stock_list: List[str] = None, max_price: float = 10000,
 
 def render_screener_page():
     """スクリーナー画面をレンダリング"""
-    st.title("🔍 銘柄スクリーナー")
+    # タイトルとAI分析ボタンを横並び
+    title_col, ai_col = st.columns([3, 1])
+    with title_col:
+        st.title("🔍 銘柄スクリーナー")
+    with ai_col:
+        st.write("")  # スペーサー
+        if st.button("🤖 AI詳細分析", use_container_width=True, type="secondary"):
+            st.session_state.run_ai_analysis = True
+    
     st.markdown("楽天証券かぶミニ対応銘柄（2126銘柄）から、トレンドフォロー戦略に合う銘柄を検出します。")
     
     # 設定
@@ -722,6 +730,79 @@ def render_screener_page():
         with tab1:
             if buy_signals:
                 st.caption("※ テクニカルスコア順（高いほど推奨）")
+                
+                # === トップ5銘柄の自動AI分析 ===
+                top5 = buy_signals[:5]
+                
+                # AI分析結果がなければ自動実行
+                if 'top5_ai_results' not in st.session_state or st.session_state.get('top5_ai_tickers') != [s['ticker'] for s in top5]:
+                    try:
+                        from sentiment import NewsAnalyzer
+                        analyzer = NewsAnalyzer()
+                        
+                        with st.spinner("🤖 トップ5銘柄をAI分析中..."):
+                            ai_results = []
+                            progress_bar = st.progress(0)
+                            
+                            for i, stock in enumerate(top5):
+                                ticker = stock['ticker']
+                                try:
+                                    news = analyzer.get_news(ticker)
+                                    if news:
+                                        score, reason = analyzer.analyze_news(ticker, news[0].get('title', ''))
+                                        stock['ai_score'] = score
+                                        stock['ai_reason'] = reason
+                                        # 統合スコア計算
+                                        tech = stock.get('tech_score', 50)
+                                        stock['total_score'] = (tech * 0.7) + (score * 0.3) + stock.get('price_bonus', 0)
+                                    else:
+                                        stock['ai_score'] = 50
+                                        stock['ai_reason'] = "ニュースなし"
+                                        stock['total_score'] = stock.get('base_score', 0)
+                                except Exception as e:
+                                    stock['ai_score'] = 50
+                                    stock['ai_reason'] = f"エラー: {str(e)[:20]}"
+                                    stock['total_score'] = stock.get('base_score', 0)
+                                
+                                ai_results.append(stock)
+                                progress_bar.progress((i + 1) / len(top5))
+                                time.sleep(4)  # API制限対策
+                            
+                            progress_bar.empty()
+                            # 統合スコアで再ソート
+                            ai_results = sorted(ai_results, key=lambda x: x.get('total_score', 0), reverse=True)
+                            st.session_state.top5_ai_results = ai_results
+                            st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                    except ImportError:
+                        st.warning("⚠️ AI分析ライブラリがインストールされていません")
+                        st.session_state.top5_ai_results = top5
+                        st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                
+                # AI分析結果表示（トップ5）
+                if 'top5_ai_results' in st.session_state:
+                    st.success("🏆 **AI分析済みトップ5** (統合スコア = テクニカル70% + AI30% + 価格ボーナス)")
+                    for rank, stock in enumerate(st.session_state.top5_ai_results, 1):
+                        col1, col2, col3, col4, col5 = st.columns([0.5, 2, 1, 1, 1])
+                        with col1:
+                            st.write(f"**{rank}**")
+                        with col2:
+                            rank_badge = stock.get('rank', 'C')
+                            st.write(f"**[{rank_badge}] {stock['ticker']}** - {stock['name']}")
+                            st.caption(f"AI: {stock.get('ai_reason', 'N/A')}")
+                        with col3:
+                            st.metric("株価", f"¥{stock['price']:,.0f}")
+                        with col4:
+                            ai_score = stock.get('ai_score', 50)
+                            color = "🟢" if ai_score >= 60 else "🔴" if ai_score < 40 else "🟡"
+                            st.metric("AI感情", f"{color} {ai_score}")
+                        with col5:
+                            total = stock.get('total_score', stock.get('base_score', 0))
+                            st.metric("統合", f"{total:.1f}点")
+                    
+                    st.divider()
+                
+                # 残りの銘柄を表示
+                st.markdown("### その他の買いシグナル銘柄")
                 for stock in buy_signals:
                     render_stock_card(stock, show_signal=True)
             else:
