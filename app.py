@@ -313,6 +313,13 @@ def main():
     # 資産サマリー（上部に常時表示）
     assets, portfolio = render_asset_summary()
     
+    # === 含み損アラート表示 ===
+    loss_alerts = st.session_state.get('loss_alerts', [])
+    if loss_alerts:
+        with st.expander("⚠️ 含み損アラート（-2%以上）", expanded=True):
+            for alert in loss_alerts:
+                st.error(f"🔴 **{alert['ticker']}** ({alert['name']}) : {alert['pnl_pct']:.1f}%")
+    
     st.divider()
     
     st.title("📈 株価監視・売買シグナル通知")
@@ -343,7 +350,13 @@ def main():
         for i, ticker in enumerate(st.session_state.watchlist):
             col1, col2 = st.columns([3, 1])
             with col1:
-                if st.button(ticker, key=f"watch_{i}", use_container_width=True):
+                # 銘柄名を取得して表示
+                try:
+                    info = get_ticker_info(ticker)
+                    display_name = info.get('name', ticker)[:15]
+                except:
+                    display_name = ticker
+                if st.button(f"{ticker}: {display_name}", key=f"watch_{i}", use_container_width=True):
                     st.session_state.selected_ticker = ticker
             with col2:
                 if st.button("×", key=f"remove_{i}"):
@@ -351,6 +364,10 @@ def main():
                     st.rerun()
         
         if st.session_state.watchlist:
+            # AI分析トグル
+            use_ai_batch = st.toggle("🤖 AI分析を使用", value=False, help="一括分析時にGemini AIでニュース感情も分析")
+            st.session_state.use_ai_batch = use_ai_batch
+            
             if st.button("🔄 全銘柄を一括分析", use_container_width=True):
                 st.session_state.batch_analyze = True
         
@@ -377,12 +394,28 @@ def main():
         st.session_state.batch_analyze = False
         st.subheader("📊 一括分析結果")
         
+        use_ai = st.session_state.get('use_ai_batch', False)
+        if use_ai:
+            st.info("🤖 AI分析モードON（Gemini API使用）")
+        
         tabs = st.tabs(st.session_state.watchlist)
         for tab, ticker in zip(tabs, st.session_state.watchlist):
             with tab:
                 with st.spinner(f"{ticker} を分析中..."):
                     result = analyze_ticker(ticker)
                     render_analysis_result(ticker, result)
+                    
+                    # AI分析（トグルON時のみ）
+                    if use_ai:
+                        try:
+                            from sentiment import render_sentiment_panel
+                            st.divider()
+                            st.markdown("### 🤖 AI感情分析")
+                            render_sentiment_panel(ticker)
+                        except ImportError:
+                            st.warning("AI機能のライブラリがインストールされていません")
+                        except Exception as e:
+                            st.error(f"AI分析エラー: {e}")
     
     elif analyze_button or st.session_state.get('selected_ticker'):
         selected = st.session_state.get('selected_ticker')
@@ -395,31 +428,28 @@ def main():
             render_analysis_result(ticker, result)
     
     else:
-        st.info("👈 サイドバーで銘柄コードを入力し、「分析開始」をクリックしてください")
-        
-        st.markdown("""
-        ### 使い方
-        1. **銘柄コード入力**: 米国株は `AAPL`, `NVDA` など、日本株は `7203.T` など
-        2. **分析開始**: シグナル確認 + 購入可能株数を計算
-        3. **ポートフォリオ**: 保有銘柄・資金を管理
-        
-        ### 新機能
-        - 💼 **ポートフォリオ管理**: 保有銘柄と資金を登録
-        - 🧮 **購入シミュレーター**: 2%ルールで推奨株数を計算
-        - ⚠️ **総リスクモニター**: 全銘柄が損切りになった場合の最大損失を表示
-        """)
-    
-    # 下部: ポートフォリオプレビュー
-    st.divider()
-    with st.expander("📦 保有銘柄（プレビュー）", expanded=False):
+        # 保有銘柄一覧を表示
+        st.subheader("📦 保有銘柄一覧")
         if portfolio:
-            df = pd.DataFrame(portfolio)
-            cols = ['ticker', 'quantity', 'avg_cost', 'current_price', 'unrealized_pnl', 'stop_loss']
-            df_display = df[[c for c in cols if c in df.columns]].copy()
-            df_display.columns = ['銘柄', '株数', '取得単価', '現在価格', '含み損益', '損切り'][:len(df_display.columns)]
-            st.dataframe(df_display, use_container_width=True)
+            for h in portfolio:
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                with col1:
+                    name = h.get('name', h['ticker'])
+                    st.write(f"**{h['ticker']}** - {name}")
+                with col2:
+                    st.metric("現在価格", f"¥{h.get('current_price', 0):,.0f}")
+                with col3:
+                    pnl = h.get('unrealized_pnl', 0)
+                    pnl_pct = h.get('unrealized_pnl_pct', 0)
+                    color = "normal" if pnl >= 0 else "inverse"
+                    st.metric("含み損益", f"¥{pnl:,.0f}", delta=f"{pnl_pct:+.1f}%", delta_color=color)
+                with col4:
+                    if st.button("📊 分析", key=f"home_analyze_{h['ticker']}"):
+                        st.session_state.selected_ticker = h['ticker']
+                        st.rerun()
+                st.divider()
         else:
-            st.info("保有銘柄なし → 「💼 ポートフォリオ」ページで追加")
+            st.info("保有銘柄がありません。「💼 ポートフォリオ」ページで銘柄を追加してください。")
 
 
 if __name__ == "__main__":

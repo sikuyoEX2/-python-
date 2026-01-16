@@ -66,3 +66,35 @@ stock_signal_app/
 - このツールは分析・監視用であり、自動売買機能はありません
 - 投資判断は自己責任で行ってください
 - yfinanceの制限により、15分足は直近5日分のみ取得可能です
+
+## 💾 データ永続化（Streamlit Cloud）
+
+Streamlit Cloudでポートフォリオ・資金データを永続化するには、**Turso DB**の設定が必要です。
+
+### Turso設定手順
+
+1. **Tursoアカウント作成**: https://turso.tech/ で無料登録
+2. **データベース作成**:
+   ```bash
+   turso db create stock-app
+   turso db show stock-app --url  # URLをコピー
+   turso db tokens create stock-app  # トークンをコピー
+   ```
+3. **Streamlit Cloudに設定**:
+   - アプリの「Settings」→「Secrets」を開く
+   - 以下を追加:
+   ```toml
+   TURSO_DATABASE_URL = "libsql://your-database.turso.io"
+   TURSO_AUTH_TOKEN = "your_token_here"
+   ```
+4. **アプリを再起動**
+
+### AI機能（オプション）
+
+Gemini APIを使ったニュース感情分析を有効にするには:
+
+```toml
+GEMINI_API_KEY = "your_gemini_api_key"
+```
+
+Gemini APIキーは https://aistudio.google.com/app/apikey で取得できます。

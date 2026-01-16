@@ -94,6 +94,7 @@ def get_portfolio_with_prices() -> List[Dict]:
     ポートフォリオに現在価格と損益を追加して取得（キャッシュ利用）
     """
     portfolio = get_portfolio()
+    loss_alerts = []  # 損失アラート用
     
     for holding in portfolio:
         ticker = holding['ticker']
@@ -120,10 +121,26 @@ def get_portfolio_with_prices() -> List[Dict]:
                     (holding['distance_to_sl'] / current_price) * 100
                     if current_price > 0 else 0
                 )
+            
+            # === 含み損-2%アラート ===
+            if holding['unrealized_pnl_pct'] <= -2.0:
+                holding['loss_alert'] = True
+                loss_alerts.append({
+                    'ticker': ticker,
+                    'name': holding['name'],
+                    'pnl_pct': holding['unrealized_pnl_pct']
+                })
+            else:
+                holding['loss_alert'] = False
         else:
             holding['current_price'] = None
             holding['market_value'] = 0
             holding['unrealized_pnl'] = 0
+            holding['loss_alert'] = False
+    
+    # セッションに損失アラートを保存
+    if loss_alerts:
+        st.session_state.loss_alerts = loss_alerts
     
     return portfolio
 
@@ -261,27 +278,53 @@ def render_add_holding_form():
     """保有銘柄追加フォーム"""
     st.subheader("➕ 銘柄追加")
     
+    # 銘柄コード入力（フォーム外）
+    ticker_col1, ticker_col2 = st.columns([3, 1])
+    with ticker_col1:
+        ticker = st.text_input("銘柄コード", placeholder="AAPL or 7203.T", key="add_ticker")
+    with ticker_col2:
+        st.write("")  # スペーサー
+        if st.button("📡 現在値取得", use_container_width=True):
+            if ticker:
+                try:
+                    price = get_current_price(ticker.upper())
+                    if price:
+                        st.session_state.fetched_price = price
+                        st.session_state.fetched_ticker = ticker.upper()
+                        st.success(f"現在値: ¥{price:,.0f}")
+                    else:
+                        st.error("価格取得失敗")
+                except:
+                    st.error("価格取得失敗")
+    
     with st.form("add_holding_form"):
         col1, col2 = st.columns(2)
         
         with col1:
-            ticker = st.text_input("銘柄コード", placeholder="AAPL or 7203.T")
-            quantity = st.number_input("株数", min_value=1, value=100, step=1)
+            quantity = st.number_input("株数", min_value=1, value=1, step=1)
+            # 取得した価格があればデフォルト値として使用
+            default_price = st.session_state.get('fetched_price', 100.0)
+            avg_cost = st.number_input("平均取得単価", min_value=0.01, value=float(default_price), step=1.0)
         
         with col2:
-            avg_cost = st.number_input("平均取得単価", min_value=0.01, value=100.0, step=1.0)
-            stop_loss = st.number_input("損切り価格 (任意)", min_value=0.0, value=0.0, step=1.0)
+            st.markdown("**損切り価格（2%ルール自動計算）**")
+            # 2%損切りを自動計算
+            auto_stop_loss = avg_cost * 0.98
+            st.info(f"推奨損切り価格: ¥{auto_stop_loss:,.0f}（-2%）")
         
         submitted = st.form_submit_button("追加", use_container_width=True)
         
         if submitted and ticker:
             ticker = ticker.upper()
             currency = "USD" if not ticker.endswith('.T') else "JPY"
-            sl = stop_loss if stop_loss > 0 else None
+            calculated_sl = avg_cost * 0.98  # 2%損切り自動設定
             
-            add_or_update_holding(ticker, quantity, avg_cost, sl, currency)
+            add_or_update_holding(ticker, quantity, avg_cost, calculated_sl, currency)
             add_transaction(ticker, "BUY", quantity, avg_cost)
-            st.success(f"{ticker} を追加しました")
+            st.success(f"{ticker} を追加しました（損切り: ¥{calculated_sl:,.0f}）")
+            # 取得価格をクリア
+            if 'fetched_price' in st.session_state:
+                del st.session_state.fetched_price
             st.rerun()
 
 
@@ -332,14 +375,43 @@ def render_portfolio_table(portfolio: List[Dict]):
                 key=f"sl_{h['ticker']}"
             )
             
-            col_a, col_b = st.columns(2)
+            st.divider()
+            st.markdown("**📝 銘柄情報を編集**")
+            
+            edit_col1, edit_col2 = st.columns(2)
+            with edit_col1:
+                new_quantity = st.number_input(
+                    "株数",
+                    min_value=1,
+                    value=int(h['quantity']),
+                    step=1,
+                    key=f"qty_{h['ticker']}"
+                )
+            with edit_col2:
+                new_avg_cost = st.number_input(
+                    "取得単価",
+                    min_value=0.01,
+                    value=float(h['avg_cost']),
+                    step=1.0,
+                    key=f"cost_{h['ticker']}"
+                )
+            
+            col_a, col_b, col_c = st.columns(3)
             with col_a:
-                if st.button("💾 SL更新", key=f"update_sl_{h['ticker']}"):
-                    update_stop_loss(h['ticker'], new_sl)
+                if st.button("💾 更新", key=f"update_{h['ticker']}"):
+                    # 損切り価格も更新（2%ルール）
+                    calculated_sl = new_avg_cost * 0.98 if new_sl == 0 else new_sl
+                    add_or_update_holding(h['ticker'], new_quantity, new_avg_cost, calculated_sl, h.get('currency', 'JPY'))
                     st.success("更新しました")
                     st.rerun()
             
             with col_b:
+                if st.button("💾 損切り価格更新", key=f"update_sl_{h['ticker']}"):
+                    update_stop_loss(h['ticker'], new_sl)
+                    st.success("更新しました")
+                    st.rerun()
+            
+            with col_c:
                 if st.button("🗑️ 削除", key=f"delete_{h['ticker']}"):
                     delete_holding(h['ticker'])
                     st.success("削除しました")
