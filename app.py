@@ -172,14 +172,14 @@ def render_analysis_result(ticker: str, result: dict):
     
     # リスクリワード表示（シグナル時のみ）
     if rr:
-            st.subheader("💰 リスクリワード")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("エントリー価格", f"{rr['entry']:.2f}")
-            with col2:
-                st.metric("損切り目安", f"{rr['stop_loss']:.2f}", delta=f"-{rr['risk']:.2f}")
-            with col3:
-                st.metric("利確目標 (RR 1:2)", f"{rr['take_profit']:.2f}", delta=f"+{rr['reward']:.2f}")
+        st.subheader("💰 リスクリワード")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("エントリー価格", f"{rr['entry']:.2f}")
+        with col2:
+            st.metric("損切り目安", f"{rr['stop_loss']:.2f}", delta=f"-{rr['risk']:.2f}")
+        with col3:
+            st.metric("利確目標 (RR 1:2)", f"{rr['take_profit']:.2f}", delta=f"+{rr['reward']:.2f}")
     
     # チャート表示
     st.subheader("📈 チャート")
@@ -367,8 +367,9 @@ def main():
     with st.expander("📦 保有銘柄（プレビュー）", expanded=False):
         if portfolio:
             df = pd.DataFrame(portfolio)
-            df_display = df[['ticker', 'quantity', 'avg_cost', 'current_price', 'unrealized_pnl', 'stop_loss']].copy()
-            df_display.columns = ['銘柄', '株数', '取得単価', '現在価格', '含み損益', '損切り']
+            cols = ['ticker', 'quantity', 'avg_cost', 'current_price', 'unrealized_pnl', 'stop_loss']
+            df_display = df[[c for c in cols if c in df.columns]].copy()
+            df_display.columns = ['銘柄', '株数', '取得単価', '現在価格', '含み損益', '損切り'][:len(df_display.columns)]
             st.dataframe(df_display, use_container_width=True)
         else:
             st.info("保有銘柄なし → 「💼 ポートフォリオ」ページで追加")

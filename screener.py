@@ -547,6 +547,19 @@ def render_screener_page():
         show_setup = st.checkbox("セットアップ中の銘柄も表示", value=True)
         
         st.divider()
+        
+        # AI分析オプション
+        st.subheader("🤖 AI詳細分析")
+        use_ai = st.checkbox("AI分析を実行（上位10件）", 
+                            value=st.session_state.get('use_ai_analysis', False),
+                            key='use_ai_checkbox',
+                            help="スクリーニング結果の上位銘柄にGemini APIでニュース分析を実行")
+        st.session_state.use_ai_analysis = use_ai
+        
+        if use_ai:
+            st.caption("⚠️ Gemini APIキーが必要です")
+        
+        st.divider()
         st.caption(f"対象銘柄数: {len(RAKUTEN_MINI_STOCKS)}銘柄")
     
     # スキャン数の決定
@@ -660,6 +673,79 @@ def render_screener_page():
                 st.dataframe(df, use_container_width=True, hide_index=True)
             else:
                 st.info("条件に合う銘柄がありません")
+        
+        # AI分析タブ（session_stateで管理）
+        if use_ai and results:
+            st.divider()
+            st.subheader("🤖 AI詳細分析（上位10件）")
+            
+            # 上位10件を抽出
+            top_picks = results[:10]
+            
+            if st.button("🔬 AI分析を実行", type="secondary"):
+                try:
+                    from sentiment import SentimentAnalyzer
+                    from ml_engine import StockPredictor
+                    
+                    analyzer = SentimentAnalyzer()
+                    predictor = StockPredictor()
+                    
+                    if not analyzer.is_available():
+                        st.error("❌ Gemini APIキーが設定されていません。Secretsに`GEMINI_API_KEY`を追加してください。")
+                    else:
+                        progress = st.progress(0)
+                        ai_results = []
+                        
+                        for i, stock in enumerate(top_picks):
+                            ticker = stock['ticker']
+                            progress.progress((i + 1) / len(top_picks))
+                            st.text(f"分析中: {ticker}... ({i+1}/{len(top_picks)})")
+                            
+                            # 感情分析
+                            score, summary, _ = analyzer.get_sentiment(ticker)
+                            
+                            # ML予測（シンプル版）
+                            pred = predictor._simple_prediction(
+                                pd.DataFrame({'close': [stock['price']], 'rsi': [stock.get('rsi', 50)], 'ema_200': [stock['price']]}),
+                                score
+                            )
+                            
+                            ai_results.append({
+                                'ticker': ticker,
+                                'name': stock['name'],
+                                'price': stock['price'],
+                                'rsi': stock.get('rsi'),
+                                'ai_score': score,
+                                'ai_summary': summary,
+                                'prediction': pred['direction']
+                            })
+                            
+                            # 【レート制限対策】Gemini無料枠は15 RPM（4秒に1回）
+                            if i < len(top_picks) - 1:  # 最後以外は待機
+                                time.sleep(4.0)
+                        
+                        progress.empty()
+                        
+                        # AI分析結果を表示
+                        st.success("✅ AI分析完了！")
+                        
+                        for result in ai_results:
+                            col1, col2, col3 = st.columns([2, 1, 2])
+                            with col1:
+                                st.write(f"**{result['ticker']}** - {result['name']}")
+                                st.caption(f"¥{result['price']:,.0f} / RSI: {result['rsi']:.1f}")
+                            with col2:
+                                score_color = "🟢" if result['ai_score'] >= 70 else "🔴" if result['ai_score'] <= 30 else "🟡"
+                                st.metric(f"{score_color} AI感情", f"{result['ai_score']}/100")
+                            with col3:
+                                st.write(f"**{result['prediction']}**")
+                                st.caption(result['ai_summary'])
+                            st.divider()
+                        
+                except ImportError as e:
+                    st.error(f"❌ AI機能に必要なライブラリがインストールされていません: {e}")
+                except Exception as e:
+                    st.error(f"❌ AI分析エラー: {e}")
     else:
         st.info("👆 「スクリーニング開始」ボタンをクリックしてスキャンを開始してください")
         

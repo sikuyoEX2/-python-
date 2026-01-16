@@ -39,10 +39,11 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     avg_gain = gain.ewm(span=period, adjust=False).mean()
     avg_loss = loss.ewm(span=period, adjust=False).mean()
     
-    rs = avg_gain / avg_loss
+    # ゼロ除算対策
+    rs = np.where(avg_loss != 0, avg_gain / avg_loss, 0)
     rsi = 100 - (100 / (1 + rs))
     
-    return rsi
+    return pd.Series(rsi, index=series.index)
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:

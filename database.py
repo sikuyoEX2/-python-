@@ -466,3 +466,103 @@ def get_transactions(limit: int = 20) -> List[Dict]:
     init_database()
     txns = st.session_state.get('transactions', [])
     return sorted(txns, key=lambda x: x['executed_at'], reverse=True)[:limit]
+
+
+# ============================================
+# 感情スコアキャッシュ（AI機能用）
+# ============================================
+
+SENTIMENT_CACHE_FILE = DATA_DIR / "sentiment_cache.json"
+
+
+def get_cached_sentiment(ticker: str, date_str: str) -> Optional[Dict]:
+    """
+    キャッシュから感情スコアを取得
+    
+    Args:
+        ticker: 銘柄コード
+        date_str: 日付文字列 (YYYY-MM-DD)
+    
+    Returns:
+        キャッシュされたデータ or None
+    """
+    init_database()
+    
+    if st.session_state.get('use_turso'):
+        try:
+            conn = TursoConnection()
+            rows = conn.fetchall(
+                "SELECT score, summary FROM sentiment_cache WHERE ticker = ? AND date = ?",
+                [ticker, date_str]
+            )
+            if rows:
+                return {'score': rows[0][0], 'summary': rows[0][1]}
+        except:
+            pass
+        return None
+    else:
+        # JSONキャッシュ
+        cache = load_json_file(SENTIMENT_CACHE_FILE, {})
+        key = f"{ticker}_{date_str}"
+        return cache.get(key)
+
+
+def save_sentiment_cache(ticker: str, date_str: str, score: int, summary: str):
+    """
+    感情スコアをキャッシュに保存
+    
+    Args:
+        ticker: 銘柄コード
+        date_str: 日付文字列
+        score: 感情スコア (0-100)
+        summary: 要約
+    """
+    init_database()
+    now = datetime.now().isoformat()
+    
+    if st.session_state.get('use_turso'):
+        try:
+            conn = TursoConnection()
+            # テーブル作成（なければ）
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sentiment_cache (
+                    ticker TEXT,
+                    date TEXT,
+                    score INTEGER,
+                    summary TEXT,
+                    updated_at TEXT,
+                    PRIMARY KEY (ticker, date)
+                )
+            """)
+            # Upsert
+            conn.execute(
+                "INSERT OR REPLACE INTO sentiment_cache (ticker, date, score, summary, updated_at) VALUES (?, ?, ?, ?, ?)",
+                [ticker, date_str, score, summary, now]
+            )
+        except Exception as e:
+            print(f"Sentiment cache save error: {e}")
+    else:
+        # JSONキャッシュ
+        cache = load_json_file(SENTIMENT_CACHE_FILE, {})
+        key = f"{ticker}_{date_str}"
+        cache[key] = {
+            'score': score,
+            'summary': summary,
+            'updated_at': now
+        }
+        save_json_file(SENTIMENT_CACHE_FILE, cache)
+
+
+def clear_sentiment_cache():
+    """感情スコアキャッシュをクリア"""
+    init_database()
+    
+    if st.session_state.get('use_turso'):
+        try:
+            conn = TursoConnection()
+            conn.execute("DELETE FROM sentiment_cache")
+        except:
+            pass
+    else:
+        save_json_file(SENTIMENT_CACHE_FILE, {})
+

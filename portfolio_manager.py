@@ -11,7 +11,6 @@ from database import (
     add_transaction
 )
 from data_fetcher import get_ticker_info, get_current_price
-import yfinance as yf
 
 
 def calculate_position_size(
