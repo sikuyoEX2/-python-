@@ -123,7 +123,7 @@ class SentimentAnalyzer:
     
     def get_news(self, ticker: str) -> List[Dict]:
         """
-        yfinanceからニュースを取得
+        yfinanceからニュースを取得し、失敗したらGoogle News RSSを使用
         
         Args:
             ticker: 銘柄コード
@@ -131,15 +131,55 @@ class SentimentAnalyzer:
         Returns:
             ニュースのリスト
         """
+        news_items = []
+        
+        # 1. 優先: yfinance (あれば)
         try:
             stock = yf.Ticker(ticker)
-            news = stock.news
-            if news:
-                return news[:5]  # 最新5件
-            return []
+            if stock.news:
+                return stock.news[:5]
+        except:
+            pass
+            
+        # 2. フォールバック: Google News RSS
+        # 日本株コード対応 (末尾の.Tを削除して検索)
+        search_ticker = ticker.replace(".T", "")
+        try:
+            import urllib.request
+            import xml.etree.ElementTree as ET
+            
+            query = f"{search_ticker} 株 ニュース"
+            encoded_query = urllib.parse.quote(query)
+            # hl=ja&gl=JP&ceid=JP:ja で日本語ニュース指定
+            url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
+            
+            with urllib.request.urlopen(url, timeout=5) as response:
+                xml_data = response.read()
+                
+            root = ET.fromstring(xml_data)
+            
+            for item in root.findall('.//item')[:5]:
+                title = item.find('title').text if item.find('title') is not None else "No Title"
+                link = item.find('link').text if item.find('link') is not None else ""
+                
+                # パブリッシャー除去 (例: "タイトル - メディア名")
+                source = "Google News"
+                if " - " in title:
+                    parts = title.rsplit(" - ", 1)
+                    title = parts[0].strip()
+                    source = parts[1].strip()
+                
+                news_items.append({
+                    'title': title,
+                    'link': link,
+                    'publisher': source,
+                    'summary': title # RSSにはsummaryがないことが多いのでタイトルで代用
+                })
+                
         except Exception as e:
-            print(f"News fetch error: {e}")
-            return []
+            print(f"RSS fetch error for {ticker}: {e}")
+            
+        return news_items
     
     def get_sentiment(self, ticker: str) -> Tuple[int, str, List[Dict]]:
         """
