@@ -471,7 +471,8 @@ def screen_stocks_parallel(stock_list: List[str], max_price: float = 10000,
 
 
 def screen_stocks(stock_list: List[str] = None, max_price: float = 10000, 
-                  progress_callback=None, use_parallel: bool = False) -> List[Dict]:
+                  progress_callback=None, use_parallel: bool = False, 
+                  max_workers: int = 10) -> List[Dict]:
     """
     銘柄をスクリーニング
     
@@ -480,6 +481,7 @@ def screen_stocks(stock_list: List[str] = None, max_price: float = 10000,
         max_price: 最大株価
         progress_callback: 進捗コールバック関数
         use_parallel: 並列処理を使用するか
+        max_workers: 並列ワーカー数
     
     Returns:
         条件に合う銘柄のリスト
@@ -489,7 +491,7 @@ def screen_stocks(stock_list: List[str] = None, max_price: float = 10000,
     
     # 並列処理を使用
     if use_parallel:
-        return screen_stocks_parallel(stock_list, max_price, max_workers=10, 
+        return screen_stocks_parallel(stock_list, max_price, max_workers=max_workers, 
                                        progress_callback=progress_callback)
     
     # 逐次処理（スマホ向け）
@@ -562,7 +564,8 @@ def render_screener_page():
         scan_list = RAKUTEN_MINI_STOCKS
         scan_count = len(scan_list)
     
-    # デバイス判定
+    # デバイス判定（参考用に保持、将来使う可能性あり）
+    from device_utils import is_mobile_device
     is_mobile = is_mobile_device()
     
     # スクリーニング実行
@@ -570,11 +573,9 @@ def render_screener_page():
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # モード表示
-        if is_mobile:
-            st.info("📱 スマホモード: 逐次処理で実行します")
-        else:
-            st.success("💻 PCモード: 並列処理で高速実行します")
+        # 並列処理のWorkers数（スマホ5、PC10）
+        workers = 5 if is_mobile else 10
+        st.success(f"⚡ 並列処理で実行（Workers: {workers}）")
         
         def update_progress(current, total, ticker):
             progress_bar.progress(current / total)
@@ -585,7 +586,8 @@ def render_screener_page():
                 stock_list=scan_list, 
                 max_price=max_price, 
                 progress_callback=update_progress,
-                use_parallel=not is_mobile  # PCなら並列処理
+                use_parallel=True,  # 常に並列処理
+                max_workers=workers
             )
         
         progress_bar.empty()
