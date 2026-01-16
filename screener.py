@@ -372,6 +372,55 @@ def analyze_stock(data: Dict) -> Optional[Dict]:
             if near_ema or latest['rsi'] > 55:
                 setup = "戻り待ち"
         
+        # === テクニカルスコア計算（Max 100点）===
+        tech_score = 0
+        
+        # トレンド評価（40点満点）
+        trend_score = 0
+        if latest['close'] > latest['ema_200']:  # Price > 200EMA
+            trend_score += 20
+        if latest['ema_20'] > latest['ema_200']:  # 20EMA > 200EMA
+            trend_score += 20
+        
+        # モメンタム/押し目評価（40点満点）
+        momentum_score = 0
+        rsi = latest['rsi'] or 50
+        if 30 <= rsi <= 40:  # 売られすぎ・押し目ゾーン
+            momentum_score = 30
+        elif rsi < 30:  # 極度の売られすぎ
+            momentum_score = 25
+        elif 40 < rsi <= 60:  # 中立
+            momentum_score = 20
+        elif rsi > 70:  # 買われすぎ
+            momentum_score = 0
+        else:
+            momentum_score = 10
+        
+        # 出来高評価（20点満点）- データがあれば
+        volume_score = 10  # デフォルト
+        
+        tech_score = trend_score + momentum_score + volume_score
+        
+        # === 価格値ごろ感ボーナス（Max 10点）===
+        price = data['current_price']
+        if price < 1000:
+            price_bonus = 10
+        elif price < 3000:
+            price_bonus = 5
+        else:
+            price_bonus = 0
+        
+        # === ランク判定（テクニカルのみ、AI加点前）===
+        base_score = tech_score + price_bonus
+        if base_score >= 80:
+            rank = "S"
+        elif base_score >= 60:
+            rank = "A"
+        elif base_score >= 40:
+            rank = "B"
+        else:
+            rank = "C"
+        
         return {
             'ticker': data['ticker'],
             'name': data['name'],
@@ -381,7 +430,12 @@ def analyze_stock(data: Dict) -> Optional[Dict]:
             'signal': signal,
             'trigger': trigger,
             'setup': setup,
-            'ema_20_dist': ((latest['close'] - latest['ema_20']) / latest['ema_20']) * 100
+            'ema_20_dist': ((latest['close'] - latest['ema_20']) / latest['ema_20']) * 100,
+            # 新規追加
+            'tech_score': tech_score,
+            'price_bonus': price_bonus,
+            'base_score': base_score,  # AI加点前スコア
+            'rank': rank
         }
         
     except Exception as e:
@@ -529,13 +583,25 @@ def render_screener_page():
     
     # 設定
     with st.sidebar:
+        st.subheader("💰 予算設定")
+        max_budget = st.number_input(
+            "最大予算（円）",
+            min_value=10000,
+            max_value=1000000,
+            value=100000,
+            step=10000,
+            help="かぶミニ（1株単位）での最大購入予算"
+        )
+        
+        st.divider()
+        
         st.subheader("🎯 スクリーニング条件")
         max_price = st.number_input(
             "最大株価（円）",
-            min_value=1000,
+            min_value=500,
             max_value=100000,
-            value=10000,
-            step=1000
+            value=min(max_budget, 10000),
+            step=500
         )
         
         scan_mode = st.radio(
@@ -553,13 +619,32 @@ def render_screener_page():
         use_ai = st.checkbox("AI分析を実行（上位10件）", 
                             value=st.session_state.get('use_ai_analysis', False),
                             key='use_ai_checkbox',
-                            help="スクリーニング結果の上位銘柄にGemini APIでニュース分析を実行")
+                            help="テクニカルスコア上位銘柄にGemini APIでニュース分析")
         st.session_state.use_ai_analysis = use_ai
         
         if use_ai:
-            st.caption("⚠️ Gemini APIキーが必要です")
+            st.caption("⚠️ Gemini APIキー必要 / 約40秒かかります")
         
         st.divider()
+        
+        # スコア説明
+        with st.expander("📊 スコアの見方"):
+            st.markdown("""
+            **テクニカル評価（100点満点）**
+            - トレンド: 40点
+            - モメンタム: 40点
+            - 出来高: 20点
+            
+            **価格ボーナス（10点満点）**
+            - 1000円未満: +10点
+            - 3000円未満: +5点
+            
+            **AI評価（30%重み付け）**
+            - ニュース感情分析
+            
+            **ランク**: S(80+) / A(60+) / B(40+) / C
+            """)
+        
         st.caption(f"対象銘柄数: {len(RAKUTEN_MINI_STOCKS)}銘柄")
     
     # スキャン数の決定
@@ -617,59 +702,62 @@ def render_screener_page():
         
         st.caption(f"最終スキャン: {scan_time}")
         
-        # 株価×RSIスコアでソート（低いほど上位）
-        # スコア = (株価/最大株価) + (RSI/100) → 0に近いほど「安くて売られすぎ」
+        # テクニカルスコア順にソート（高いほど上位）
         if results:
-            max_price_in_results = max(r['price'] for r in results) or 1
-            for r in results:
-                price_score = r['price'] / max_price_in_results  # 0〜1
-                rsi_score = (r.get('rsi') or 50) / 100  # 0〜1
-                r['value_score'] = price_score + rsi_score  # 0〜2（低いほど良い）
-            
-            # スコア順にソート
-            results = sorted(results, key=lambda x: x.get('value_score', 999))
+            # base_score（テクニカル+価格ボーナス）でソート
+            results = sorted(results, key=lambda x: x.get('base_score', 0), reverse=True)
             st.session_state.screening_results = results
         
-        # シグナル発生銘柄
-        signal_stocks = [r for r in results if r.get('signal')]
-        setup_stocks = [r for r in results if r.get('setup') and not r.get('signal')]
+        # 買いシグナルと売りシグナルに分類
+        buy_signals = [r for r in results if r.get('signal') == '買い']
+        sell_signals = [r for r in results if r.get('signal') == '売り']
         
         # タブで表示
         tab1, tab2, tab3 = st.tabs([
-            f"🎯 シグナル発生 ({len(signal_stocks)})",
-            f"⏳ セットアップ中 ({len(setup_stocks)})",
+            f"🟢 買いシグナル ({len(buy_signals)})",
+            f"🔴 売りシグナル ({len(sell_signals)})",
             f"📊 全銘柄 ({len(results)})"
         ])
         
         with tab1:
-            if signal_stocks:
-                st.caption("※ 低価格×低RSI順（お買い得順）")
-                for stock in signal_stocks:
+            if buy_signals:
+                st.caption("※ テクニカルスコア順（高いほど推奨）")
+                for stock in buy_signals:
                     render_stock_card(stock, show_signal=True)
             else:
-                st.info("現在シグナルが発生している銘柄はありません")
+                st.info("現在、買いシグナルが発生している銘柄はありません")
         
         with tab2:
-            if show_setup and setup_stocks:
-                st.caption("※ 低価格×低RSI順（お買い得順）")
-                for stock in setup_stocks:
-                    render_stock_card(stock, show_signal=False)
-            elif not show_setup:
-                st.info("サイドバーで「セットアップ中の銘柄も表示」をオンにしてください")
+            if sell_signals:
+                st.caption("※ テクニカルスコア順")
+                for stock in sell_signals:
+                    render_stock_card(stock, show_signal=True)
             else:
-                st.info("セットアップ中の銘柄はありません")
+                st.info("現在、売りシグナルが発生している銘柄はありません")
         
         with tab3:
             if results:
-                st.caption("※ 低価格×低RSI順（お買い得順）")
+                st.caption("※ テクニカルスコア順（高いほど推奨）")
                 df = pd.DataFrame(results)
-                df = df[['ticker', 'name', 'price', 'rsi', 'value_score', 'trend', 'signal', 'setup']]
-                df.columns = ['コード', '銘柄名', '株価', 'RSI', 'スコア', 'トレンド', 'シグナル', 'セットアップ']
-                df['株価'] = df['株価'].apply(lambda x: f"¥{x:,.0f}")
-                df['RSI'] = df['RSI'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
-                df['スコア'] = df['スコア'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
-                df['シグナル'] = df['シグナル'].fillna('-')
-                df['セットアップ'] = df['セットアップ'].fillna('-')
+                # 必要なカラムのみ抽出（存在確認）
+                cols = ['rank', 'ticker', 'name', 'price', 'tech_score', 'price_bonus', 'base_score', 'rsi', 'trend']
+                available_cols = [c for c in cols if c in df.columns]
+                df = df[available_cols]
+                
+                # カラム名変更
+                col_map = {
+                    'rank': 'ランク', 'ticker': 'コード', 'name': '銘柄名', 
+                    'price': '株価', 'tech_score': 'テクニカル', 'price_bonus': '価格ボーナス',
+                    'base_score': '総合スコア', 'rsi': 'RSI', 'trend': 'トレンド'
+                }
+                df = df.rename(columns=col_map)
+                
+                # フォーマット
+                if '株価' in df.columns:
+                    df['株価'] = df['株価'].apply(lambda x: f"¥{x:,.0f}")
+                if 'RSI' in df.columns:
+                    df['RSI'] = df['RSI'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
+                
                 st.dataframe(df, use_container_width=True, hide_index=True)
             else:
                 st.info("条件に合う銘柄がありません")
@@ -726,20 +814,62 @@ def render_screener_page():
                         
                         progress.empty()
                         
-                        # AI分析結果を表示
-                        st.success("✅ AI分析完了！")
+                        # === 総合スコア計算 ===
+                        # 総合スコア = (テクニカル点 × 0.7) + (AI感情点 × 0.3) + 価格ボーナス
+                        for r in ai_results:
+                            # 元のテクニカルスコアを取得（top_picksから）
+                            tech_score = next((s.get('tech_score', 50) for s in top_picks if s['ticker'] == r['ticker']), 50)
+                            price_bonus = next((s.get('price_bonus', 0) for s in top_picks if s['ticker'] == r['ticker']), 0)
+                            
+                            # 総合スコア = テクニカル×0.7 + AI×0.3 + 価格ボーナス
+                            r['tech_score'] = tech_score
+                            r['price_bonus'] = price_bonus
+                            r['total_score'] = (tech_score * 0.7) + (r['ai_score'] * 0.3) + price_bonus
+                            
+                            # ランク更新
+                            if r['total_score'] >= 80:
+                                r['rank'] = "S"
+                            elif r['total_score'] >= 60:
+                                r['rank'] = "A"
+                            elif r['total_score'] >= 40:
+                                r['rank'] = "B"
+                            else:
+                                r['rank'] = "C"
                         
-                        for result in ai_results:
-                            col1, col2, col3 = st.columns([2, 1, 2])
+                        # 総合スコア順にソート（高いほど良い）
+                        ai_results = sorted(ai_results, key=lambda x: x['total_score'], reverse=True)
+                        
+                        # AI分析結果を表示
+                        st.success("✅ AI分析完了！（総合スコア = テクニカル70% + AI30% + 価格ボーナス）")
+                        st.caption("スコアが高いほど「好材料 × 売られ過ぎ × 割安」で買い推奨")
+                        
+                        for rank, result in enumerate(ai_results, 1):
+                            col1, col2, col3, col4 = st.columns([0.5, 2, 1, 1.5])
+                            
                             with col1:
-                                st.write(f"**{result['ticker']}** - {result['name']}")
-                                st.caption(f"¥{result['price']:,.0f} / RSI: {result['rsi']:.1f}")
+                                # ランキング表示
+                                medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+                                if rank in medals:
+                                    st.markdown(f"### {medals[rank]}")
+                                else:
+                                    st.markdown(f"**{rank}**")
+                            
                             with col2:
-                                score_color = "🟢" if result['ai_score'] >= 70 else "🔴" if result['ai_score'] <= 30 else "🟡"
-                                st.metric(f"{score_color} AI感情", f"{result['ai_score']}/100")
+                                rank_badge = result.get('rank', 'C')
+                                st.write(f"**[{rank_badge}] {result['ticker']}** - {result['name']}")
+                                st.caption(f"¥{result['price']:,.0f} / RSI: {result['rsi']:.1f} / 総合: {result['total_score']:.1f}点")
+                            
                             with col3:
-                                st.write(f"**{result['prediction']}**")
-                                st.caption(result['ai_summary'])
+                                score_color = "🟢" if result['ai_score'] >= 70 else "🔴" if result['ai_score'] <= 30 else "🟡"
+                                st.metric(f"{score_color} AI", f"{result['ai_score']}")
+                            
+                            with col4:
+                                # 詳細分析ボタン
+                                if st.button(f"📊 詳細分析", key=f"ai_detail_{result['ticker']}"):
+                                    st.session_state.selected_ticker = result['ticker']
+                                    st.session_state.go_to_signal = True
+                                    st.rerun()
+                            
                             st.divider()
                         
                 except ImportError as e:

@@ -82,26 +82,38 @@ class SentimentAnalyzer:
 {{"score": 整数, "reason": "理由の文字列"}}
 """
         
-        try:
-            response = self.model.generate_content(prompt)
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(text)
-            score = int(data.get("score", 50))
-            reason = data.get("reason", "分析完了")
-            return max(0, min(100, score)), reason
-        except json.JSONDecodeError:
-            # JSONパースに失敗した場合、テキストから数値を抽出
+        # リトライ処理（最大3回）
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                import re
-                numbers = re.findall(r'\d+', response.text)
-                if numbers:
-                    score = int(numbers[0])
-                    return max(0, min(100, score)), "分析完了（部分解析）"
-            except:
-                pass
-            return 50, "解析エラー"
-        except Exception as e:
-            return 50, f"Error: {str(e)}"
+                response = self.model.generate_content(prompt)
+                text = response.text.replace("```json", "").replace("```", "").strip()
+                data = json.loads(text)
+                score = int(data.get("score", 50))
+                reason = data.get("reason", "分析完了")
+                return max(0, min(100, score)), reason
+            except json.JSONDecodeError:
+                # JSONパースに失敗した場合、テキストから数値を抽出
+                try:
+                    import re
+                    numbers = re.findall(r'\d+', response.text)
+                    if numbers:
+                        score = int(numbers[0])
+                        return max(0, min(100, score)), "分析完了（部分解析）"
+                except:
+                    pass
+                return 50, "解析エラー"
+            except Exception as e:
+                error_msg = str(e)
+                # 429 (Rate Limit) エラーの場合はリトライ
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(10)  # 10秒待機してリトライ
+                        continue
+                return 50, f"Error: {error_msg}"
+        
+        return 50, "リトライ上限到達"
     
     def get_news(self, ticker: str) -> List[Dict]:
         """

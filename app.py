@@ -125,11 +125,41 @@ def render_analysis_result(ticker: str, result: dict):
     # ステータスパネル
     st.subheader(f"📊 {info['name']} ({ticker})")
     
-    col1, col2, col3, col4 = st.columns(4)
-    
     current_price = df_main.iloc[-1]['close']
     prev_price = df_main.iloc[-2]['close']
     change_pct = ((current_price - prev_price) / prev_price * 100)
+    rsi_value = df_main.iloc[-1]['rsi']
+    
+    # テクニカルスコア計算
+    tech_score = 0
+    # トレンド（40点）
+    if df_main.iloc[-1]['close'] > df_main.iloc[-1].get('ema_200', 0):
+        tech_score += 20
+    if df_main.iloc[-1].get('ema_20', 0) > df_main.iloc[-1].get('ema_200', 0):
+        tech_score += 20
+    # モメンタム（40点）
+    if 30 <= rsi_value <= 40:
+        tech_score += 30
+    elif rsi_value < 30:
+        tech_score += 25
+    elif 40 < rsi_value <= 60:
+        tech_score += 20
+    # 出来高（10点デフォルト）
+    tech_score += 10
+    # 価格ボーナス
+    price_bonus = 10 if current_price < 1000 else (5 if current_price < 3000 else 0)
+    base_score = tech_score + price_bonus
+    # ランク判定
+    if base_score >= 80:
+        rank = "S"
+    elif base_score >= 60:
+        rank = "A"
+    elif base_score >= 40:
+        rank = "B"
+    else:
+        rank = "C"
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric("現在価格", f"{current_price:.2f}", delta=f"{change_pct:.2f}%")
@@ -140,10 +170,15 @@ def render_analysis_result(ticker: str, result: dict):
         st.caption(signal_result['trend'])
     
     with col3:
-        rsi_value = df_main.iloc[-1]['rsi']
         st.metric("RSI (14)", f"{rsi_value:.1f}")
     
     with col4:
+        # スコアとランク表示
+        rank_colors = {"S": "🏆", "A": "🥇", "B": "🥈", "C": "🥉"}
+        st.metric(f"{rank_colors.get(rank, '')} ランク", rank)
+        st.caption(f"スコア: {base_score}点")
+    
+    with col5:
         if signal_result['signal'] == SignalType.LONG:
             st.success(f"**{signal_result['current_state']}**")
         elif signal_result['signal'] == SignalType.SHORT:
@@ -180,6 +215,18 @@ def render_analysis_result(ticker: str, result: dict):
             st.metric("損切り目安", f"{rr['stop_loss']:.2f}", delta=f"-{rr['risk']:.2f}")
         with col3:
             st.metric("利確目標 (RR 1:2)", f"{rr['take_profit']:.2f}", delta=f"+{rr['reward']:.2f}")
+    
+    # AI感情分析（オプション）
+    st.divider()
+    with st.expander("🤖 AI感情分析（Gemini）", expanded=False):
+        if st.button("📊 ニュース感情を分析", key=f"ai_analyze_{ticker}"):
+            try:
+                from sentiment import render_sentiment_panel
+                render_sentiment_panel(ticker)
+            except ImportError:
+                st.error("AI機能のライブラリがインストールされていません")
+            except Exception as e:
+                st.error(f"AI分析エラー: {e}")
     
     # チャート表示
     st.subheader("📈 チャート")
