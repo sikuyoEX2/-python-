@@ -731,20 +731,20 @@ def render_screener_page():
             if buy_signals:
                 st.caption("※ テクニカルスコア順（高いほど推奨）")
                 
-                # === トップ5銘柄の自動AI分析 ===
-                top5 = buy_signals[:5]
+                # === トップ2銘柄の自動AI分析 ===
+                top2 = buy_signals[:2]
                 
                 # AI分析結果がなければ自動実行
-                if 'top5_ai_results' not in st.session_state or st.session_state.get('top5_ai_tickers') != [s['ticker'] for s in top5]:
+                if 'top2_ai_results' not in st.session_state or st.session_state.get('top2_ai_tickers') != [s['ticker'] for s in top2]:
                     try:
                         from sentiment import SentimentAnalyzer
                         analyzer = SentimentAnalyzer()
                         
-                        with st.spinner("🤖 トップ5銘柄をAI分析中..."):
+                        with st.spinner("🤖 おすすめトップ2銘柄をAI詳細分析中..."):
                             ai_results = []
                             progress_bar = st.progress(0)
                             
-                            for i, stock in enumerate(top5):
+                            for i, stock in enumerate(top2):
                                 ticker = stock['ticker']
                                 try:
                                     news = analyzer.get_news(ticker)
@@ -771,27 +771,27 @@ def render_screener_page():
                                     stock['total_score'] = stock.get('base_score', 0)
                                 
                                 ai_results.append(stock)
-                                progress_bar.progress((i + 1) / len(top5))
+                                progress_bar.progress((i + 1) / len(top2))
                                 time.sleep(12)  # API制限対策 (無料枠は余裕を持って待機)
                             
                             progress_bar.empty()
                             # 統合スコアで再ソート
                             ai_results = sorted(ai_results, key=lambda x: x.get('total_score', 0), reverse=True)
-                            st.session_state.top5_ai_results = ai_results
-                            st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                            st.session_state.top2_ai_results = ai_results
+                            st.session_state.top2_ai_tickers = [s['ticker'] for s in top2]
                     except ImportError as ie:
                         st.warning(f"⚠️ AI分析ライブラリがインストールされていません: {ie}")
-                        st.session_state.top5_ai_results = top5
-                        st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                        st.session_state.top2_ai_results = top2
+                        st.session_state.top2_ai_tickers = [s['ticker'] for s in top2]
                     except Exception as e:
                         st.warning(f"⚠️ AI分析中にエラー: {e}")
-                        st.session_state.top5_ai_results = top5
-                        st.session_state.top5_ai_tickers = [s['ticker'] for s in top5]
+                        st.session_state.top2_ai_results = top2
+                        st.session_state.top2_ai_tickers = [s['ticker'] for s in top2]
                 
-                # AI分析結果表示（トップ5）
-                if 'top5_ai_results' in st.session_state:
-                    st.success("🏆 **AI分析済みトップ5** (統合スコア = テクニカル70% + AI30% + 価格ボーナス)")
-                    for rank, stock in enumerate(st.session_state.top5_ai_results, 1):
+                # AI分析結果表示（トップ2）
+                if 'top2_ai_results' in st.session_state:
+                    st.success("🏆 **AI分析済みトップ2** (統合スコア = テクニカル70% + AI30% + 価格ボーナス)")
+                    for rank, stock in enumerate(st.session_state.top2_ai_results, 1):
                         col1, col2, col3, col4, col5 = st.columns([0.5, 2, 1, 1, 1])
                         with col1:
                             st.write(f"**{rank}**")

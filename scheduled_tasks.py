@@ -123,16 +123,16 @@ def run_scheduled_screener_scan(use_ai: bool = False) -> List[Dict]:
     # スコア順にソート
     buy_signals = sorted(buy_signals, key=lambda x: x.get('base_score', 0), reverse=True)
     
-    # トップ3を取得
-    top3 = buy_signals[:3]
+    # トップ2を取得
+    top2 = buy_signals[:2]
     
     # AI分析（オプション）
-    if use_ai and top3:
+    if use_ai and top2:
         try:
             from sentiment import SentimentAnalyzer
             analyzer = SentimentAnalyzer()
             
-            for stock in top3:
+            for stock in top2:
                 ticker = stock['ticker']
                 news = analyzer.get_news(ticker)
                 if news:
@@ -149,14 +149,14 @@ def run_scheduled_screener_scan(use_ai: bool = False) -> List[Dict]:
             pass
         
         # 統合スコアで再ソート
-        top3 = sorted(top3, key=lambda x: x.get('total_score', x.get('base_score', 0)), reverse=True)
+        top2 = sorted(top2, key=lambda x: x.get('total_score', x.get('base_score', 0)), reverse=True)
     
     # 通知送信
-    if top3:
+    if top2:
         notifier = get_webhook_notifier()
-        message_lines = ["🔍 **本日のおすすめ銘柄 TOP3**\n"]
+        message_lines = ["🔍 **本日のおすすめ銘柄 TOP2**\n"]
         
-        for i, stock in enumerate(top3, 1):
+        for i, stock in enumerate(top2, 1):
             score = stock.get('total_score', stock.get('base_score', 0))
             rank = stock.get('rank', 'C')
             message_lines.append(
