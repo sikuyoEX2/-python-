@@ -92,21 +92,17 @@ def calculate_total_risk_exposure(portfolio_data: List[Dict]) -> Tuple[float, fl
 
 def get_portfolio_with_prices() -> List[Dict]:
     """
-    ポートフォリオに現在価格と損益を追加して取得
+    ポートフォリオに現在価格と損益を追加して取得（キャッシュ利用）
     """
     portfolio = get_portfolio()
     
     for holding in portfolio:
         ticker = holding['ticker']
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            current_price = info.get('regularMarketPrice') or info.get('currentPrice')
-            stock_name = info.get('shortName') or info.get('longName') or ticker
-            holding['name'] = stock_name
-        except:
-            current_price = None
-            holding['name'] = ticker
+        
+        # キャッシュ版を使用（APIコール削減）
+        current_price = get_current_price(ticker)
+        info = get_ticker_info(ticker)
+        holding['name'] = info.get('name', ticker)
         
         if current_price:
             holding['current_price'] = current_price
