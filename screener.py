@@ -760,13 +760,19 @@ def render_screener_page():
                                         stock['ai_reason'] = "ニュースなし"
                                         stock['total_score'] = stock.get('base_score', 0)
                                 except Exception as e:
+                                    # エラー詳細を表示（デバッグ用）
+                                    err_msg = str(e)
+                                    if "429" in err_msg:
+                                        stock['ai_reason'] = "⚠️ API制限によりスキップ"
+                                    else:
+                                        stock['ai_reason'] = f"エラー: {err_msg[:30]}..."
+                                        
                                     stock['ai_score'] = 50
-                                    stock['ai_reason'] = f"エラー: {str(e)[:20]}"
                                     stock['total_score'] = stock.get('base_score', 0)
                                 
                                 ai_results.append(stock)
                                 progress_bar.progress((i + 1) / len(top5))
-                                time.sleep(4)  # API制限対策
+                                time.sleep(12)  # API制限対策 (無料枠は余裕を持って待機)
                             
                             progress_bar.empty()
                             # 統合スコアで再ソート

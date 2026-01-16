@@ -142,8 +142,10 @@ def run_scheduled_screener_scan(use_ai: bool = False) -> List[Dict]:
                     # 統合スコア計算
                     tech_score = stock.get('tech_score', 50)
                     stock['total_score'] = (tech_score * 0.7) + (score * 0.3) + stock.get('price_bonus', 0)
-                time.sleep(4)  # API制限対策
-        except:
+                time.sleep(12)  # API制限対策 (無料枠は余裕を持って待機)
+        except Exception as e:
+            # エラー発生時も続行
+            print(f"Scheduled AI analysis error: {e}")
             pass
         
         # 統合スコアで再ソート
