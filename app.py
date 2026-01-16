@@ -38,6 +38,15 @@ try:
 except Exception as e:
     print(f"Database init skipped: {e}")
 
+# 定期タスクチェック（エラー時は続行）
+try:
+    from scheduled_tasks import check_and_run_scheduled_tasks
+    scheduled_results = check_and_run_scheduled_tasks()
+    if scheduled_results.get('morning_ran') or scheduled_results.get('afternoon_ran'):
+        print(f"Scheduled scan executed at {datetime.now()}")
+except Exception as e:
+    print(f"Scheduled task skipped: {e}")
+
 # ページ設定
 st.set_page_config(
     page_title="株価シグナル監視",
@@ -81,10 +90,43 @@ def analyze_ticker(ticker: str) -> dict:
 def check_and_notify(ticker: str, signal_result: dict):
     """シグナルをチェックして通知を送信"""
     signal_type = signal_result['signal']
+    
+    # === 取引時間チェック ===
+    now = datetime.now()
+    is_japanese_stock = ticker.endswith('.T')
+    
+    if is_japanese_stock:
+        # 日本株: 9:00-15:30 のみ通知
+        market_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        if not (market_open <= now <= market_close):
+            return  # 取引時間外は通知しない
+        # 土日チェック（0=月曜, 6=日曜）
+        if now.weekday() >= 5:
+            return  # 土日は通知しない
+    else:
+        # 米国株: 日本時間 23:30-6:00 (サマータイム: 22:30-5:00)
+        # 簡易チェック: 営業日のみ
+        if now.weekday() >= 5:
+            return  # 土日は通知しない
+    
+    # 最後の通知時刻をチェック（クールダウン: 30分）
+    if 'last_notification_time' not in st.session_state:
+        st.session_state.last_notification_time = {}
+    
     last_signal = st.session_state.last_signals.get(ticker)
+    last_notify_time = st.session_state.last_notification_time.get(ticker)
+    
+    # 30分以内に同じ銘柄で通知していたらスキップ
+    cooldown_minutes = 30
+    if last_notify_time:
+        elapsed = (datetime.now() - last_notify_time).total_seconds() / 60
+        if elapsed < cooldown_minutes and signal_type == last_signal:
+            return  # クールダウン中は通知しない
     
     if signal_type != SignalType.NONE and signal_type != last_signal:
         st.session_state.last_signals[ticker] = signal_type
+        st.session_state.last_notification_time[ticker] = datetime.now()
         
         notify_type = "buy" if signal_type == SignalType.LONG else "sell"
         st.session_state.notification_manager.add_alert(
@@ -246,12 +288,20 @@ def render_portfolio_page():
     st.divider()
     
     # タブ
-    tab1, tab2, tab3 = st.tabs(["📦 保有銘柄", "➕ 銘柄追加", "💰 資金管理"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📦 保有銘柄", "🔔 売却判定", "➕ 銘柄追加", "💰 資金管理"])
     
     with tab1:
         render_portfolio_table(portfolio)
     
     with tab2:
+        # 売却判定アドバイザー
+        try:
+            from sell_advisor import render_sell_advisor_section
+            render_sell_advisor_section(portfolio)
+        except ImportError as e:
+            st.error(f"売却判定モジュールを読み込めませんでした: {e}")
+    
+    with tab3:
         render_add_holding_form()
         
         st.divider()
@@ -273,7 +323,7 @@ def render_portfolio_page():
             except Exception as e:
                 st.error(f"エラー: {e}")
     
-    with tab3:
+    with tab4:
         render_funds_input()
 
 
