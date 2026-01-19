@@ -99,10 +99,10 @@ def get_portfolio_with_prices() -> List[Dict]:
     for holding in portfolio:
         ticker = holding['ticker']
         
-        # キャッシュ版を使用（APIコール削減）
-        current_price = get_current_price(ticker)
+        # get_ticker_infoから名前と価格の両方を取得（APIコール削減）
         info = get_ticker_info(ticker)
         holding['name'] = info.get('name', ticker)
+        current_price = info.get('current_price')
         
         if current_price:
             holding['current_price'] = current_price

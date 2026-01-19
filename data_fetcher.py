@@ -97,7 +97,7 @@ def resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
 def get_ticker_info(ticker: str) -> dict:
     """
-    銘柄の基本情報を取得（キャッシュ付き）
+    銘柄の基本情報を取得（キャッシュ付き、タイムアウト対応）
     
     Args:
         ticker: 銘柄コード
@@ -105,15 +105,26 @@ def get_ticker_info(ticker: str) -> dict:
     Returns:
         銘柄情報の辞書
     """
-    try:
+    import concurrent.futures
+    
+    def fetch_info():
         stock = yf.Ticker(ticker)
-        info = stock.info
+        return stock.info
+    
+    try:
+        # 10秒タイムアウト
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(fetch_info)
+            info = future.result(timeout=10)
+            
         return {
             "name": info.get("shortName", ticker),
             "currency": info.get("currency", "Unknown"),
             "exchange": info.get("exchange", "Unknown"),
-            "current_price": info.get("regularMarketPrice", None)
+            "current_price": info.get("regularMarketPrice") or info.get("currentPrice")
         }
+    except concurrent.futures.TimeoutError:
+        return {"name": ticker, "currency": "Unknown", "exchange": "Unknown", "current_price": None}
     except:
         return {"name": ticker, "currency": "Unknown", "exchange": "Unknown", "current_price": None}
 
