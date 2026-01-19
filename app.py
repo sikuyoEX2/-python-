@@ -490,10 +490,10 @@ def main():
                     name = h.get('name', h['ticker'])
                     st.write(f"**{h['ticker']}** - {name}")
                 with col2:
-                    st.metric("現在価格", f"¥{h.get('current_price', 0):,.0f}")
+                    st.metric("現在価格", f"¥{h.get('current_price') or 0:,.0f}")
                 with col3:
-                    pnl = h.get('unrealized_pnl', 0)
-                    pnl_pct = h.get('unrealized_pnl_pct', 0)
+                    pnl = h.get('unrealized_pnl') or 0
+                    pnl_pct = h.get('unrealized_pnl_pct') or 0
                     color = "normal" if pnl >= 0 else "inverse"
                     st.metric("含み損益", f"¥{pnl:,.0f}", delta=f"{pnl_pct:+.1f}%", delta_color=color)
                 with col4:
