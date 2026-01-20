@@ -21,7 +21,8 @@ def calculate_sell_score(
     ticker: str,
     entry_price: float,
     stop_loss: float,
-    quantity: int
+    quantity: int,
+    current_price_from_portfolio: float = None
 ) -> Dict:
     """
     売却スコアを算出（0-100点、高いほど売り推奨）
@@ -31,6 +32,7 @@ def calculate_sell_score(
         entry_price: 取得単価
         stop_loss: 損切り価格
         quantity: 保有株数
+        current_price_from_portfolio: ポートフォリオから取得済みの現在価格（フォールバック用）
     
     Returns:
         売却判定結果の辞書
@@ -48,8 +50,28 @@ def calculate_sell_score(
         # 株価データ取得
         df = fetch_stock_data(ticker, period="1mo", interval="1d")
         if df is None or len(df) < 20:
-            result['reasons'].append("データ不足")
-            return result
+            # データ不足でもポートフォリオの価格がある場合は基本判定のみ実施
+            if current_price_from_portfolio and current_price_from_portfolio > 0:
+                current_price = current_price_from_portfolio
+                result['details']['current_price'] = current_price
+                pnl_pct = (current_price - entry_price) / entry_price * 100
+                result['details']['pnl_pct'] = pnl_pct
+                
+                # 損切りチェックのみ
+                if stop_loss and current_price <= stop_loss:
+                    result['sell_score'] = 100
+                    result['reasons'].append(f"⚠️ 損切りライン到達 (SL: ¥{stop_loss:,.0f})")
+                    result['recommendation'] = '【緊急】即時売却'
+                    result['urgency'] = '🔴 緊急'
+                elif pnl_pct <= -2:
+                    result['sell_score'] = 15
+                    result['reasons'].append(f"📉 含み損 {pnl_pct:.1f}%（2%ルール警告）")
+                else:
+                    result['reasons'].append("⚠️ データ不足（基本判定のみ）")
+                return result
+            else:
+                result['reasons'].append("データ不足")
+                return result
         
         # インジケーター計算
         df = calculate_ema(df, period=20)
@@ -188,6 +210,7 @@ def analyze_portfolio_sell_signals(portfolio: List[Dict]) -> List[Dict]:
         entry_price = holding.get('avg_cost', 0)
         stop_loss = holding.get('stop_loss', 0)
         quantity = holding.get('quantity', 0)
+        current_price = holding.get('current_price')  # ポートフォリオから取得
         
         if entry_price <= 0:
             continue
@@ -196,7 +219,8 @@ def analyze_portfolio_sell_signals(portfolio: List[Dict]) -> List[Dict]:
             ticker=ticker,
             entry_price=entry_price,
             stop_loss=stop_loss,
-            quantity=quantity
+            quantity=quantity,
+            current_price_from_portfolio=current_price
         )
         
         # 保有情報を追加
